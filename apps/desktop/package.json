@@ -1,0 +1,11 @@
+{
+  "name": "@bedrock-panel/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Electron shell for Bedrock Panel",
+  "main": "src/main.cjs",
+  "scripts": {
+    "dev": "wait-on tcp:127.0.0.1:3001 http-get://127.0.0.1:5176 && electron ./src/main.cjs",
+    "start": "electron ./src/main.cjs"
+  }
+}

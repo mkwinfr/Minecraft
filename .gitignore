@@ -1,0 +1,14 @@
+node_modules/
+.env
+.env.local
+.env.*.local
+dist/
+coverage/
+*.log
+*.tsbuildinfo
+.DS_Store
+.vscode/
+.logs/
+release/
+apps/api/.runtime/
+apps/api/public/

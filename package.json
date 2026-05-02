@@ -1,0 +1,81 @@
+{
+  "name": "bedrock-panel",
+  "version": "0.1.0",
+  "description": "Windows desktop launcher for Minecraft Bedrock server hosting",
+  "main": "apps/desktop/src/main.cjs",
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"npm run dev -w @bedrock-panel/api\" \"npm run dev -w @bedrock-panel/web\"",
+    "dev:desktop": "concurrently -n api,web,desktop -c blue,green,yellow \"cross-env WEB_ORIGIN=http://127.0.0.1:5176 npm run dev -w @bedrock-panel/api\" \"cross-env BEDROCK_PANEL_WEB_PORT=5176 npm run dev -w @bedrock-panel/web\" \"cross-env BEDROCK_PANEL_UI_URL=http://127.0.0.1:5176 npm run dev -w @bedrock-panel/desktop\"",
+    "start:desktop": "npm run start -w @bedrock-panel/desktop",
+    "build": "npm run build -w @bedrock-panel/shared && npm run build -w @bedrock-panel/api && npm run build -w @bedrock-panel/web",
+    "build:production": "npm run build && npm run build:copy-web && npm run typecheck",
+    "build:desktop": "npm run build:production && electron-builder --win nsis",
+    "pack:desktop": "npm run build:production && electron-builder --dir",
+    "build:copy-web": "node scripts/copy-web-dist.js",
+    "typecheck": "npm run typecheck -w @bedrock-panel/shared && npm run typecheck -w @bedrock-panel/api && npm run typecheck -w @bedrock-panel/web",
+    "lint": "npm run lint -w @bedrock-panel/api && npm run lint -w @bedrock-panel/shared && npm run lint -w @bedrock-panel/web",
+    "test": "echo \"No tests added yet\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "dependencies": {
+    "adm-zip": "^0.5.17",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "multer": "^2.1.1",
+    "pidusage": "^4.0.1",
+    "zod": "^4.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@typescript-eslint/eslint-plugin": "^8.59.1",
+    "@typescript-eslint/parser": "^8.59.1",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^37.2.6",
+    "electron-builder": "^26.0.12",
+    "eslint": "^10.2.1",
+    "wait-on": "^8.0.3",
+    "typescript": "^6.0.3"
+  },
+  "build": {
+    "appId": "com.bedrockpanel.launcher",
+    "productName": "Bedrock Panel",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "apps/desktop/src/**/*",
+      "apps/api/dist/**/*",
+      "apps/api/public/**/*",
+      "PIC/launcher.png",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "apps/api/dist/**/*",
+      "apps/api/public/**/*"
+    ],
+    "extraMetadata": {
+      "main": "apps/desktop/src/main.cjs"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        "nsis"
+      ]
+    }
+  }
+}

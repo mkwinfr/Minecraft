@@ -1,0 +1,35 @@
+{
+  "name": "@bedrock-panel/api",
+  "version": "0.1.0",
+  "description": "Bedrock panel API",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src --ext .ts",
+    "start": "node dist/index.js",
+    "test": "echo \"No tests added yet\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@bedrock-panel/shared": "file:../../packages/shared",
+    "@types/pidusage": "^2.0.5",
+    "adm-zip": "^0.5.17",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "multer": "^2.1.1",
+    "pidusage": "^4.0.1",
+    "zod": "^4.4.1"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/multer": "^2.1.0",
+    "tsx": "^4.21.0"
+  }
+}
