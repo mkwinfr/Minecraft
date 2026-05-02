@@ -27,7 +27,6 @@ import {
   serverFileDownloadUrl,
   fetchServerStatus,
   fetchServerTelemetry,
-  downloadIconUrl,
   installFromDownloads,
   packIconUrl,
   postInstallerInstall,
@@ -37,14 +36,17 @@ import {
   updateServerProperties,
   uploadServerFile,
   uploadPacks,
+  worldIconUrl,
   writeServerTextFile,
 } from './lib/api';
+import { TestPage } from './pages/test/TestPage';
 import './App.css';
 
 type LeftPage =
   | 'home'
   | 'bedrock-edition'
   | 'java-edition'
+  | 'test'
   | 'server-settings'
   | 'server-files'
   | 'console-feed';
@@ -53,10 +55,8 @@ type ServerSettingsTab = 'server-status' | 'properties' | 'general';
 const leftPages: Array<{ id: LeftPage; label: string }> = [
   { id: 'home', label: 'Home' },
   { id: 'bedrock-edition', label: 'Minecraft: Bedrock Edition' },
-  { id: 'java-edition', label: 'Minecraft: Java Edition' },
   { id: 'server-settings', label: 'Server Settings' },
   { id: 'server-files', label: 'Server Files' },
-  { id: 'console-feed', label: 'Console Feed' },
 ];
 
 const stateLabel: Record<ServerLifecycleState, string> = {
@@ -161,6 +161,62 @@ const fallbackTelemetry: ServerTelemetryResponse = {
   alerts: [],
 };
 
+function getDownloadDisplayName(entry: DownloadEntry): string {
+  const previewNames = (entry.packs ?? []).map((pack) => pack.name).filter(Boolean);
+  if (previewNames.length === 1) {
+    return previewNames[0];
+  }
+
+  if (previewNames.length > 1) {
+    return `${previewNames[0]} +${previewNames.length - 1}`;
+  }
+
+  return entry.filename
+    .replace(/\.(mcpack|mcaddon)$/i, '')
+    .replace(/[_-]+/g, ' ')
+    .trim();
+}
+
+function getTileTitleClass(label: string): string {
+  const length = label.trim().length;
+  if (length >= 38) {
+    return ' pack-tile-name--tiny';
+  }
+
+  if (length >= 26) {
+    return ' pack-tile-name--compact';
+  }
+
+  return '';
+}
+
+function getInstalledPacksForDownload(
+  entry: DownloadEntry,
+  behaviorPacks: BedrockPack[],
+  resourcePacks: BedrockPack[],
+): BedrockPack[] {
+  const installedByKey = new Map<string, BedrockPack>([
+    ...behaviorPacks.map((pack) => [`behavior:${pack.uuid}`, pack] as const),
+    ...resourcePacks.map((pack) => [`resource:${pack.uuid}`, pack] as const),
+  ]);
+
+  return (entry.packs ?? [])
+    .map((pack) => installedByKey.get(`${pack.type}:${pack.uuid}`))
+    .filter((pack): pack is BedrockPack => Boolean(pack));
+}
+
+function isDownloadFullyInstalled(
+  entry: DownloadEntry,
+  behaviorPacks: BedrockPack[],
+  resourcePacks: BedrockPack[],
+): boolean {
+  if (!entry.packs?.length) {
+    return false;
+  }
+
+  return getInstalledPacksForDownload(entry, behaviorPacks, resourcePacks).length === entry.packs.length;
+}
+
 type AppDialogState =
   | {
       mode: 'input';
@@ -177,6 +233,11 @@ type AppDialogState =
       confirmLabel: string;
       cancelLabel: string;
     };
+
+type AppToastState = {
+  message: string;
+  tone: 'success' | 'error';
+};
 
 function App() {
   const [selectedPage, setSelectedPage] = useState<LeftPage>('bedrock-edition');
@@ -240,10 +301,11 @@ function App() {
   const [activeWorldName, setActiveWorldName] = useState<string>('');
   const [activeWorldLoading, setActiveWorldLoading] = useState<boolean>(false);
   const [dialogState, setDialogState] = useState<AppDialogState | null>(null);
+  const [toastState, setToastState] = useState<AppToastState | null>(null);
   const fileUploadNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dialogResolveRef = useRef<((value: string | boolean | null) => void) | null>(null);
-  const modsWebviewRef = useRef<HTMLElement>(null);
-  const isElectron = typeof navigator !== 'undefined' && /Electron/i.test(navigator.userAgent);
+  const modsWebviewRef = useRef<HTMLIFrameElement>(null);
 
   const stateClass = useMemo(() => `state-badge ${status.state}`, [status.state]);
   const isServerRunning = status.state === 'running';
@@ -293,6 +355,69 @@ function App() {
   const isModsBrowserTab = filesTab === 'mods-browser';
   const isDownloadsTab = filesTab === 'downloads';
   const normalizedActiveWorld = activeWorldName.trim().toLowerCase();
+  const isApiOnline = apiHealthy ? 'Online' : 'Offline';
+  const gameplayPortStatus = isServerRunning ? 'Listening' : 'Standby';
+  const queryPortStatus = isServerRunning ? 'Listening' : 'Standby';
+
+  const showToast = useCallback((message: string, tone: AppToastState['tone']) => {
+    if (!message.trim()) {
+      return;
+    }
+
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+
+    setToastState({ message, tone });
+    toastTimerRef.current = setTimeout(() => {
+      setToastState(null);
+      toastTimerRef.current = null;
+    }, 4000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!fileActionMsg) return;
+    showToast(fileActionMsg, 'success');
+    setFileActionMsg('');
+  }, [fileActionMsg, showToast]);
+
+  useEffect(() => {
+    if (!fileError) return;
+    showToast(fileError, 'error');
+    setFileError('');
+  }, [fileError, showToast]);
+
+  useEffect(() => {
+    if (!downloadsInstallMsg) return;
+    showToast(downloadsInstallMsg, 'success');
+    setDownloadsInstallMsg('');
+  }, [downloadsInstallMsg, showToast]);
+
+  useEffect(() => {
+    if (!downloadsError) return;
+    showToast(downloadsError, 'error');
+    setDownloadsError('');
+  }, [downloadsError, showToast]);
+
+  useEffect(() => {
+    if (!packsUploadMsg) return;
+    showToast(packsUploadMsg, 'success');
+    setPacksUploadMsg('');
+  }, [packsUploadMsg, showToast]);
+
+  useEffect(() => {
+    if (!packsError) return;
+    showToast(packsError, 'error');
+    setPacksError('');
+  }, [packsError, showToast]);
 
   useEffect(() => {
     let active = true;
@@ -489,36 +614,30 @@ function App() {
     };
   }, [selectedPage, isWorldsTab]);
 
-  // Lock webview navigation to curseforge.com/minecraft-bedrock
+  // Lock iframe navigation — iframes don't fire will-navigate, so we use
+  // a beforeunload-style approach: reset src if the frame navigates away.
   useEffect(() => {
-    if (!isModsBrowserTab || !isElectron) return;
-    const wv = modsWebviewRef.current;
-    if (!wv) return;
+    if (!isModsBrowserTab) return;
+    const iframe = modsWebviewRef.current;
+    if (!iframe) return;
 
+    const HOME = 'https://www.curseforge.com/minecraft-bedrock';
     const ALLOWED = 'https://www.curseforge.com/';
-    const lockNav = (e: Event) => {
-      const url = (e as Event & { url?: string }).url ?? '';
-      if (url && !url.startsWith(ALLOWED)) {
-        (wv as HTMLElement & { loadURL?: (u: string) => void }).loadURL?.(
-          'https://www.curseforge.com/minecraft-bedrock',
-        );
-      }
-    };
-    const blockNewWindow = (e: Event) => {
-      e.preventDefault();
-      const url = (e as Event & { url?: string }).url ?? '';
-      if (url.startsWith(ALLOWED)) {
-        (wv as HTMLElement & { loadURL?: (u: string) => void }).loadURL?.(url);
+
+    const onLoad = () => {
+      try {
+        const loc = iframe.contentWindow?.location.href ?? '';
+        if (loc && !loc.startsWith(ALLOWED)) {
+          iframe.src = HOME;
+        }
+      } catch {
+        // Cross-origin — location unreadable, Electron handles blocking via session.
       }
     };
 
-    wv.addEventListener('will-navigate', lockNav);
-    wv.addEventListener('new-window', blockNewWindow);
-    return () => {
-      wv.removeEventListener('will-navigate', lockNav);
-      wv.removeEventListener('new-window', blockNewWindow);
-    };
-  }, [isModsBrowserTab, isElectron]);
+    iframe.addEventListener('load', onLoad);
+    return () => { iframe.removeEventListener('load', onLoad); };
+  }, [isModsBrowserTab]);
 
   const loadDownloads = useCallback(async () => {
     setDownloadsLoading(true);
@@ -558,6 +677,41 @@ function App() {
       setTimeout(() => setDownloadsInstallMsg(''), 4000);
     } catch (cause) {
       setDownloadsError(cause instanceof Error ? cause.message : 'Failed to install');
+    } finally {
+      setDownloadsBusy((prev) => { const next = new Set(prev); next.delete(entry.filename); return next; });
+    }
+  };
+
+  const handleUninstallDownload = async (entry: DownloadEntry) => {
+    const installedPacks = getInstalledPacksForDownload(entry, packsBehavior, packsResource);
+    if (installedPacks.length === 0) {
+      return;
+    }
+
+    setDownloadsBusy((prev) => new Set([...prev, entry.filename]));
+    setDownloadsInstallMsg('');
+    setDownloadsError('');
+    try {
+      await Promise.all(installedPacks.map((pack) => deletePack(pack.type, pack.uuid)));
+
+      const behaviorIds = new Set(
+        installedPacks.filter((pack) => pack.type === 'behavior').map((pack) => pack.uuid),
+      );
+      const resourceIds = new Set(
+        installedPacks.filter((pack) => pack.type === 'resource').map((pack) => pack.uuid),
+      );
+
+      if (behaviorIds.size > 0) {
+        setPacksBehavior((prev) => prev.filter((pack) => !behaviorIds.has(pack.uuid)));
+      }
+      if (resourceIds.size > 0) {
+        setPacksResource((prev) => prev.filter((pack) => !resourceIds.has(pack.uuid)));
+      }
+
+      setDownloadsInstallMsg(`Uninstalled ${installedPacks.length} pack(s) from ${entry.filename}`);
+      setTimeout(() => setDownloadsInstallMsg(''), 4000);
+    } catch (cause) {
+      setDownloadsError(cause instanceof Error ? cause.message : 'Failed to uninstall');
     } finally {
       setDownloadsBusy((prev) => { const next = new Set(prev); next.delete(entry.filename); return next; });
     }
@@ -718,11 +872,12 @@ function App() {
     });
   };
 
-  const handleFileUpload = async (files: FileList | null) => {
+  const handleFileUpload = async (files: FileList | null, targetPath?: string) => {
     if (!files || files.length === 0 || fileUploading) {
       return;
     }
 
+    const uploadPath = targetPath ?? filePath;
     const file = files[0];
     setFileUploading(true);
     setFileActionMsg('');
@@ -734,9 +889,9 @@ function App() {
     }
 
     try {
-      await uploadServerFile(filePath, file);
-      setFileActionMsg(`Uploaded ${file.name}`);
-      await loadFileDirectory(filePath);
+      await uploadServerFile(uploadPath, file);
+      setFileActionMsg(`Uploaded ${file.name} to /${uploadPath === '.' ? '' : uploadPath}`);
+      await loadFileDirectory(uploadPath);
       fileUploadNoticeTimerRef.current = setTimeout(() => {
         setFileActionMsg('');
       }, 4000);
@@ -751,18 +906,31 @@ function App() {
   };
 
   const handlePackToggle = async (pack: BedrockPack) => {
-    const key = pack.uuid;
-    setPacksBusy((prev) => new Set([...prev, key]));
+    const newActive = !pack.active;
+    // Find a paired pack in the other list with the same name (BP↔RP from the same addon)
+    const otherList = pack.type === 'behavior' ? packsResource : packsBehavior;
+    const paired = otherList.find((p) => p.name === pack.name && p.active !== newActive);
+
+    const keys = [pack.uuid, ...(paired ? [paired.uuid] : [])];
+    setPacksBusy((prev) => new Set([...prev, ...keys]));
     try {
-      await togglePack(pack.type, pack.uuid, !pack.active);
-      const updater = (prev: BedrockPack[]) =>
-        prev.map((p) => (p.uuid === pack.uuid ? { ...p, active: !pack.active } : p));
-      if (pack.type === 'behavior') setPacksBehavior(updater);
-      else setPacksResource(updater);
+      const ops: Promise<unknown>[] = [togglePack(pack.type, pack.uuid, newActive)];
+      if (paired) ops.push(togglePack(paired.type, paired.uuid, newActive));
+      await Promise.all(ops);
+
+      const makeUpdater = (uuid: string) => (prev: BedrockPack[]) =>
+        prev.map((p) => (p.uuid === uuid ? { ...p, active: newActive } : p));
+      if (pack.type === 'behavior') {
+        setPacksBehavior(makeUpdater(pack.uuid));
+        if (paired) setPacksResource(makeUpdater(paired.uuid));
+      } else {
+        setPacksResource(makeUpdater(pack.uuid));
+        if (paired) setPacksBehavior(makeUpdater(paired.uuid));
+      }
     } catch (cause) {
       setPacksError(cause instanceof Error ? cause.message : 'Failed to toggle pack');
     } finally {
-      setPacksBusy((prev) => { const next = new Set(prev); next.delete(key); return next; });
+      setPacksBusy((prev) => { const next = new Set(prev); for (const k of keys) next.delete(k); return next; });
     }
   };
 
@@ -1001,22 +1169,7 @@ function App() {
               </div>
             </section>
 
-            <section className="play-rail">
-              <div className="release-box rail-spacer" aria-hidden="true" />
-
-              <button
-                className="play-button"
-                type="button"
-                onClick={() => void runAction('start')}
-                disabled={busy}
-              >
-                PLAY
-              </button>
-
-              <div className="identity-box rail-spacer" aria-hidden="true" />
-            </section>
-
-            <section className="resource-telemetry-section">
+            <section className="resource-telemetry-section metrics-layout-control-deck">
               <div className="resource-telemetry-header">
                 <h3>Metrics and Status</h3>
                 <p>Live resource telemetry for Bedrock runtime.</p>
@@ -1080,6 +1233,52 @@ function App() {
                   <span>World: {formatMetric(telemetry.current.worldSizeMb, 1)} MB</span>
                 </article>
               </div>
+
+              <section className="control-deck-lower" aria-label="Control deck status">
+                <article className="deck-panel actions">
+                  <h4>Actions</h4>
+                  <div className="deck-chip-row">
+                    <button type="button" onClick={() => void runAction('restart')} disabled={busy}>
+                      Restart
+                    </button>
+                    <button type="button" onClick={() => void runAction('stop')} disabled={busy}>
+                      Stop
+                    </button>
+                  </div>
+                </article>
+
+                <article className="deck-panel connection">
+                  <h4>Connection</h4>
+                  <p>API Reachable: {isApiOnline}</p>
+                  <p>Join Latency: {formatMs(telemetry.network.averageJoinLatencyMs)}</p>
+                  <p>Connect Failures Today: {telemetry.network.connectFailuresToday}</p>
+                </article>
+
+                <article className="deck-panel network">
+                  <h4>Network Ports</h4>
+                  <p>
+                    <span className={`port-pill ${isServerRunning ? 'live' : 'standby'}`}>19132 {gameplayPortStatus}</span>
+                  </p>
+                  <p>
+                    <span className={`port-pill ${isServerRunning ? 'live' : 'standby'}`}>19133 {queryPortStatus}</span>
+                  </p>
+                </article>
+              </section>
+            </section>
+
+            <section className="play-rail">
+              <div className="release-box rail-spacer" aria-hidden="true" />
+
+              <button
+                className="play-button"
+                type="button"
+                onClick={() => void runAction('start')}
+                disabled={busy}
+              >
+                PLAY
+              </button>
+
+              <div className="identity-box rail-spacer" aria-hidden="true" />
             </section>
           </>
         ) : null}
@@ -1096,6 +1295,10 @@ function App() {
             <h3>Minecraft: Java Edition</h3>
             <p>Placeholder page reserved for future Java-specific controls.</p>
           </section>
+        ) : null}
+
+        {selectedPage === 'test' ? (
+          <TestPage />
         ) : null}
 
         {selectedPage === 'server-settings' ? (
@@ -1127,139 +1330,188 @@ function App() {
 
             {settingsTab === 'server-status' ? (
               <div className="settings-panel" role="tabpanel" aria-label="Server status">
-                <div className="settings-grid telemetry-kpis">
-                  <article className="settings-card">
-                    <h4>State</h4>
-                    <p>{stateLabel[telemetry.current.state]}</p>
-                  </article>
-                  <article className="settings-card">
-                    <h4>Uptime 24H</h4>
-                    <p>{formatMetric(telemetry.kpis.uptimePercent24h, 1)}%</p>
-                  </article>
-                  <article className="settings-card">
-                    <h4>Players Online</h4>
-                    <p>{telemetry.current.playersOnline}</p>
-                  </article>
-                  <article className="settings-card">
-                    <h4>Peak Players Today</h4>
-                    <p>{telemetry.kpis.peakPlayersToday}</p>
-                  </article>
-                  <article className="settings-card">
-                    <h4>CPU</h4>
-                    <p>{formatMetric(telemetry.current.cpuPercent, 1)}%</p>
-                  </article>
-                  <article className="settings-card">
-                    <h4>RAM</h4>
-                    <p>{formatMetric(telemetry.current.memoryMb, 0)} MB</p>
-                  </article>
-                  <article className="settings-card">
-                    <h4>RAM Peak</h4>
-                    <p>{formatMetric(telemetry.current.memoryPeakMb, 0)} MB</p>
-                  </article>
-                  <article className="settings-card">
-                    <h4>Crashes Today</h4>
-                    <p>{telemetry.kpis.crashesToday}</p>
-                  </article>
-                </div>
+                <section className="props-section">
+                  <h4 className="props-section-title">Service and Network</h4>
+                  <div className="props-grid status-grid">
+                    <div className="prop-row status-row">
+                      <span className="prop-label">Server State</span>
+                      <span className="prop-hint">Current Bedrock process lifecycle state</span>
+                      <span className={`status-value-pill ${apiHealthy ? 'ok' : 'warn'}`}>
+                        {stateLabel[telemetry.current.state]}
+                      </span>
+                    </div>
+                    <div className="prop-row status-row">
+                      <span className="prop-label">API Reachable</span>
+                      <span className="prop-hint">Panel connectivity to local API service</span>
+                      <span className={`status-value-pill ${apiHealthy ? 'ok' : 'warn'}`}>
+                        {apiHealthy ? 'Online' : 'Offline'}
+                      </span>
+                    </div>
+                    <div className="prop-row status-row">
+                      <span className="prop-label">Join Latency</span>
+                      <span className="prop-hint">Average player join response time</span>
+                      <span className="status-value">{formatMs(telemetry.network.averageJoinLatencyMs)}</span>
+                    </div>
+                    <div className="prop-row status-row">
+                      <span className="prop-label">Connect Failures Today</span>
+                      <span className="prop-hint">Failed player connection attempts</span>
+                      <span className="status-value">{telemetry.network.connectFailuresToday}</span>
+                    </div>
+                    <div className="prop-row status-row">
+                      <span className="prop-label">Action Latency</span>
+                      <span className="prop-hint">Avg/P95 command latency for lifecycle actions</span>
+                      <span className="status-value">
+                        {formatMs(telemetry.kpis.actionLatencyMsAvg)} / {formatMs(telemetry.kpis.actionLatencyMsP95)}
+                      </span>
+                    </div>
+                    <div className="prop-row status-row">
+                      <span className="prop-label">API Latency</span>
+                      <span className="prop-hint">Avg/P95 API request latency</span>
+                      <span className="status-value">
+                        {formatMs(telemetry.kpis.apiLatencyMsAvg)} / {formatMs(telemetry.kpis.apiLatencyMsP95)}
+                      </span>
+                    </div>
+                  </div>
+                </section>
 
-                <div className="settings-grid telemetry-secondary">
-                  <article className="settings-card wide">
-                    <h4>Latency</h4>
-                    <p>Action avg: {formatMs(telemetry.kpis.actionLatencyMsAvg)}</p>
-                    <p>Action p95: {formatMs(telemetry.kpis.actionLatencyMsP95)}</p>
-                    <p>API avg: {formatMs(telemetry.kpis.apiLatencyMsAvg)}</p>
-                    <p>API p95: {formatMs(telemetry.kpis.apiLatencyMsP95)}</p>
-                    <p>Startup last: {formatMs(telemetry.kpis.startupTimeMsLast)}</p>
-                    <p>Startup avg: {formatMs(telemetry.kpis.startupTimeMsAvg)}</p>
-                  </article>
+                <section className="props-section">
+                  <h4 className="props-section-title">Resources</h4>
+                  <div className="props-grid status-grid">
+                    <div className="prop-row status-row">
+                      <span className="prop-label">CPU Usage</span>
+                      <span className="prop-hint">Current process CPU load</span>
+                      <span className="status-value">{formatMetric(telemetry.current.cpuPercent, 1)}%</span>
+                    </div>
+                    <div className="prop-row status-row">
+                      <span className="prop-label">RAM Usage</span>
+                      <span className="prop-hint">Current / peak memory consumption</span>
+                      <span className="status-value">
+                        {formatMetric(telemetry.current.memoryMb, 0)} MB / {formatMetric(telemetry.current.memoryPeakMb, 0)} MB
+                      </span>
+                    </div>
+                    <div className="prop-row status-row">
+                      <span className="prop-label">Disk Free</span>
+                      <span className="prop-hint">Free storage available on server drive</span>
+                      <span className="status-value">{formatMetric(telemetry.current.diskFreeGb, 2)} GB</span>
+                    </div>
+                    <div className="prop-row status-row">
+                      <span className="prop-label">World Size</span>
+                      <span className="prop-hint">Total size of the worlds directory</span>
+                      <span className="status-value">{formatMetric(telemetry.current.worldSizeMb, 1)} MB</span>
+                    </div>
+                    <div className="prop-row status-row">
+                      <span className="prop-label">Players Online</span>
+                      <span className="prop-hint">Current concurrent players</span>
+                      <span className="status-value">{telemetry.current.playersOnline}</span>
+                    </div>
+                    <div className="prop-row status-row">
+                      <span className="prop-label">Peak Players Today</span>
+                      <span className="prop-hint">Highest concurrent session count today</span>
+                      <span className="status-value">{telemetry.kpis.peakPlayersToday}</span>
+                    </div>
+                  </div>
+                </section>
 
-                  <article className="settings-card">
-                    <h4>Disk and World</h4>
-                    <p>Disk Free: {formatMetric(telemetry.current.diskFreeGb, 2)} GB</p>
-                    <p>World Size: {formatMetric(telemetry.current.worldSizeMb, 1)} MB</p>
-                    <p>Update Age: {formatMetric(telemetry.kpis.updateAgeDays, 0)} days</p>
-                  </article>
+                <section className="props-section">
+                  <h4 className="props-section-title">Activity and Reliability</h4>
+                  <div className="props-grid status-grid">
+                    <div className="prop-row status-row">
+                      <span className="prop-label">Uptime (24h)</span>
+                      <span className="prop-hint">Rolling uptime percentage over last 24 hours</span>
+                      <span className="status-value">{formatMetric(telemetry.kpis.uptimePercent24h, 1)}%</span>
+                    </div>
+                    <div className="prop-row status-row">
+                      <span className="prop-label">Crashes Today</span>
+                      <span className="prop-hint">Unexpected process exits for current day</span>
+                      <span className="status-value">{telemetry.kpis.crashesToday}</span>
+                    </div>
+                    <div className="prop-row status-row">
+                      <span className="prop-label">Starts / Stops / Restarts</span>
+                      <span className="prop-hint">Lifecycle action counters for today</span>
+                      <span className="status-value">
+                        {telemetry.kpis.startsToday} / {telemetry.kpis.stopsToday} / {telemetry.kpis.restartsToday}
+                      </span>
+                    </div>
+                    <div className="prop-row status-row">
+                      <span className="prop-label">Joins / Leaves</span>
+                      <span className="prop-hint">Player session events for today</span>
+                      <span className="status-value">
+                        {telemetry.kpis.joinsToday} / {telemetry.kpis.leavesToday}
+                      </span>
+                    </div>
+                    <div className="prop-row status-row">
+                      <span className="prop-label">Startup Time</span>
+                      <span className="prop-hint">Last / average startup duration</span>
+                      <span className="status-value">
+                        {formatMs(telemetry.kpis.startupTimeMsLast)} / {formatMs(telemetry.kpis.startupTimeMsAvg)}
+                      </span>
+                    </div>
+                    <div className="prop-row status-row">
+                      <span className="prop-label">Backup Health</span>
+                      <span className="prop-hint">
+                        {telemetry.backup.lastBackupAt
+                          ? `Last backup ${new Date(telemetry.backup.lastBackupAt).toLocaleString()}`
+                          : 'No backup timestamp available'}
+                      </span>
+                      <span className={`status-value-pill ${telemetry.backup.status === 'healthy' ? 'ok' : 'warn'}`}>
+                        {telemetry.backup.status.toUpperCase()} ({telemetry.backup.failuresToday} fails)
+                      </span>
+                    </div>
+                  </div>
+                </section>
 
-                  <article className="settings-card">
-                    <h4>Connection Health</h4>
-                    <p>API Reachable: {apiHealthy ? 'Yes' : 'No'}</p>
-                    <p>Connect Failures Today: {telemetry.network.connectFailuresToday}</p>
-                    <p>Join Latency: {formatMs(telemetry.network.averageJoinLatencyMs)}</p>
-                  </article>
-
-                  <article className="settings-card">
-                    <h4>Daily Counters</h4>
-                    <p>Starts: {telemetry.kpis.startsToday}</p>
-                    <p>Stops: {telemetry.kpis.stopsToday}</p>
-                    <p>Restarts: {telemetry.kpis.restartsToday}</p>
-                    <p>Joins: {telemetry.kpis.joinsToday}</p>
-                    <p>Leaves: {telemetry.kpis.leavesToday}</p>
-                  </article>
-
-                  <article className="settings-card">
-                    <h4>Backup Health</h4>
-                    <p>Status: {telemetry.backup.status}</p>
-                    <p>
-                      Last Backup:{' '}
-                      {telemetry.backup.lastBackupAt
-                        ? new Date(telemetry.backup.lastBackupAt).toLocaleString()
-                        : 'n/a'}
-                    </p>
-                    <p>Backup Duration: {formatMs(telemetry.backup.lastBackupDurationMs)}</p>
-                    <p>Backup Failures Today: {telemetry.backup.failuresToday}</p>
-                  </article>
-
-                  <article className="settings-card wide">
-                    <h4>Resource Trends (Last 60m)</h4>
-                    {trendPoints.length === 0 ? (
-                      <p>No telemetry samples yet. Keep the server panel open for a minute.</p>
-                    ) : (
-                      <div className="telemetry-chart-grid">
-                        <div className="telemetry-chart">
-                          <span>CPU %</span>
-                          <div className="sparkline">
-                            {trendPoints.map((point) => (
-                              <i
-                                key={`cpu-${point.at}`}
-                                style={{ height: `${Math.max(8, ((point.cpuPercent ?? 0) / trendCpuMax) * 100)}%` }}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                        <div className="telemetry-chart">
-                          <span>RAM MB</span>
-                          <div className="sparkline">
-                            {trendPoints.map((point) => (
-                              <i
-                                key={`ram-${point.at}`}
-                                style={{
-                                  height: `${Math.max(8, ((point.memoryMb ?? 0) / trendMemoryMax) * 100)}%`,
-                                }}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                        <div className="telemetry-chart">
-                          <span>Players</span>
-                          <div className="sparkline">
-                            {trendPoints.map((point) => (
-                              <i
-                                key={`players-${point.at}`}
-                                style={{
-                                  height: `${Math.max(8, (point.playersOnline / trendPlayersMax) * 100)}%`,
-                                }}
-                              />
-                            ))}
-                          </div>
+                <section className="props-section">
+                  <h4 className="props-section-title">Resource Trends (Last 60m)</h4>
+                  {trendPoints.length === 0 ? (
+                    <p className="status-empty">No telemetry samples yet. Keep this tab open for a minute.</p>
+                  ) : (
+                    <div className="telemetry-chart-grid">
+                      <div className="telemetry-chart">
+                        <span>CPU %</span>
+                        <div className="sparkline">
+                          {trendPoints.map((point) => (
+                            <i
+                              key={`cpu-${point.at}`}
+                              style={{ height: `${Math.max(8, ((point.cpuPercent ?? 0) / trendCpuMax) * 100)}%` }}
+                            />
+                          ))}
                         </div>
                       </div>
-                    )}
-                  </article>
+                      <div className="telemetry-chart">
+                        <span>RAM MB</span>
+                        <div className="sparkline">
+                          {trendPoints.map((point) => (
+                            <i
+                              key={`ram-${point.at}`}
+                              style={{
+                                height: `${Math.max(8, ((point.memoryMb ?? 0) / trendMemoryMax) * 100)}%`,
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      <div className="telemetry-chart">
+                        <span>Players</span>
+                        <div className="sparkline">
+                          {trendPoints.map((point) => (
+                            <i
+                              key={`players-${point.at}`}
+                              style={{
+                                height: `${Math.max(8, (point.playersOnline / trendPlayersMax) * 100)}%`,
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </section>
 
-                  <article className="settings-card wide">
-                    <h4>Active Alerts</h4>
+                <div className="status-bottom-grid">
+                  <section className="props-section">
+                    <h4 className="props-section-title">Active Alerts</h4>
                     {telemetry.alerts.length === 0 ? (
-                      <p>No active alerts.</p>
+                      <p className="status-empty">No active alerts.</p>
                     ) : (
                       <div className="telemetry-list">
                         {telemetry.alerts.map((alert) => (
@@ -1270,12 +1522,12 @@ function App() {
                         ))}
                       </div>
                     )}
-                  </article>
+                  </section>
 
-                  <article className="settings-card wide">
-                    <h4>Telemetry Events</h4>
+                  <section className="props-section">
+                    <h4 className="props-section-title">Telemetry Events</h4>
                     {telemetry.events.length === 0 ? (
-                      <p>No events yet.</p>
+                      <p className="status-empty">No events yet.</p>
                     ) : (
                       <div className="telemetry-list">
                         {telemetry.events.slice(0, 20).map((event, index) => (
@@ -1285,15 +1537,34 @@ function App() {
                         ))}
                       </div>
                     )}
-                  </article>
-
-                  <article className="settings-card wide">
-                    <h4>Retention</h4>
-                    <p>Raw sample interval: every {telemetry.retention.rawSampleSeconds}s</p>
-                    <p>Raw retention: {telemetry.retention.rawRetentionHours}h</p>
-                    <p>Rollup retention: {telemetry.retention.rollupRetentionDays}d</p>
-                  </article>
+                  </section>
                 </div>
+
+                <section className="props-section">
+                  <h4 className="props-section-title">Telemetry Retention</h4>
+                  <div className="props-grid status-grid">
+                    <div className="prop-row status-row">
+                      <span className="prop-label">Raw Sample Interval</span>
+                      <span className="prop-hint">How frequently new runtime samples are captured</span>
+                      <span className="status-value">Every {telemetry.retention.rawSampleSeconds}s</span>
+                    </div>
+                    <div className="prop-row status-row">
+                      <span className="prop-label">Raw Retention Window</span>
+                      <span className="prop-hint">Duration of high-resolution retained metrics</span>
+                      <span className="status-value">{telemetry.retention.rawRetentionHours}h</span>
+                    </div>
+                    <div className="prop-row status-row">
+                      <span className="prop-label">Rollup Retention Window</span>
+                      <span className="prop-hint">Duration of aggregated historical metrics</span>
+                      <span className="status-value">{telemetry.retention.rollupRetentionDays}d</span>
+                    </div>
+                    <div className="prop-row status-row">
+                      <span className="prop-label">Update Age</span>
+                      <span className="prop-hint">Days since server binaries were last refreshed</span>
+                      <span className="status-value">{formatMetric(telemetry.kpis.updateAgeDays, 0)} days</span>
+                    </div>
+                  </div>
+                </section>
               </div>
             ) : null}
 
@@ -2086,7 +2357,7 @@ function App() {
                         }
                         e.preventDefault();
                         setFileDragOver(false);
-                        void handleFileUpload(e.dataTransfer.files);
+                        void handleFileUpload(e.dataTransfer.files, filePath);
                       }}
                     >
                       <span>{fileUploading ? '…' : '↑'}</span>
@@ -2094,7 +2365,10 @@ function App() {
                         type="file"
                         className="packs-upload-input"
                         disabled={fileUploading}
-                        onChange={(e) => void handleFileUpload(e.target.files)}
+                        onChange={(e) => {
+                          void handleFileUpload(e.target.files, filePath);
+                          e.currentTarget.value = '';
+                        }}
                       />
                     </label>
                   </div>
@@ -2109,6 +2383,38 @@ function App() {
                     >
                       ↻
                     </button>
+                    <label
+                      className={`packs-header-upload icon-tab${fileDragOver ? ' drag-over' : ''}${fileUploading ? ' uploading' : ''}`}
+                      title={fileUploading ? 'Uploading...' : 'Upload World File'}
+                      aria-label={fileUploading ? 'Uploading...' : 'Upload World File'}
+                      onDragOver={(e) => {
+                        if (fileUploading) {
+                          return;
+                        }
+                        e.preventDefault();
+                        setFileDragOver(true);
+                      }}
+                      onDragLeave={() => setFileDragOver(false)}
+                      onDrop={(e) => {
+                        if (fileUploading) {
+                          return;
+                        }
+                        e.preventDefault();
+                        setFileDragOver(false);
+                        void handleFileUpload(e.dataTransfer.files, 'worlds');
+                      }}
+                    >
+                      <span>{fileUploading ? '…' : '↑'}</span>
+                      <input
+                        type="file"
+                        className="packs-upload-input"
+                        disabled={fileUploading}
+                        onChange={(e) => {
+                          void handleFileUpload(e.target.files, 'worlds');
+                          e.currentTarget.value = '';
+                        }}
+                      />
+                    </label>
                   </div>
                 ) : isModsBrowserTab ? (
                   <div className="file-toolbar-actions">
@@ -2118,8 +2424,7 @@ function App() {
                       title="Back"
                       aria-label="Back"
                       onClick={() => {
-                        const wv = modsWebviewRef.current as HTMLElement & { goBack?: () => void };
-                        wv?.goBack?.();
+                        modsWebviewRef.current?.contentWindow?.history.back();
                       }}
                     >
                       ←
@@ -2130,8 +2435,7 @@ function App() {
                       title="Forward"
                       aria-label="Forward"
                       onClick={() => {
-                        const wv = modsWebviewRef.current as HTMLElement & { goForward?: () => void };
-                        wv?.goForward?.();
+                        modsWebviewRef.current?.contentWindow?.history.forward();
                       }}
                     >
                       →
@@ -2142,8 +2446,7 @@ function App() {
                       title="Refresh browser"
                       aria-label="Refresh browser"
                       onClick={() => {
-                        const wv = modsWebviewRef.current as HTMLElement & { reload?: () => void };
-                        wv?.reload?.();
+                        modsWebviewRef.current?.contentWindow?.location.reload();
                       }}
                     >
                       ↻
@@ -2198,26 +2501,22 @@ function App() {
                   {isFileManagerTab || isWorldsTab ? (
                     <>
                       {fileUploading ? <span className="header-notice loading">Uploading file...</span> : null}
-                      {fileActionMsg ? <span className="header-notice success">{fileActionMsg}</span> : null}
-                      {fileError ? <span className="header-notice error">{fileError}</span> : null}
                     </>
                   ) : isModsBrowserTab || isDownloadsTab ? (
-                    <>
-                      {downloadsInstallMsg ? <span className="header-notice success">{downloadsInstallMsg}</span> : null}
-                      {downloadsError ? <span className="header-notice error">{downloadsError}</span> : null}
-                    </>
+                    <></>
                   ) : (
                     <>
                       {packsUploading ? <span className="header-notice loading">Uploading pack...</span> : null}
-                      {packsUploadMsg ? <span className="header-notice success">{packsUploadMsg}</span> : null}
-                      {packsError ? <span className="header-notice error">{packsError}</span> : null}
                     </>
                   )}
                 </div>
               </div>
             </div>
 
-            <div className="settings-panel packs-panel" role="tabpanel">
+            <div
+              className={isModsBrowserTab ? 'mods-browser-standalone' : 'settings-panel packs-panel'}
+              role="tabpanel"
+            >
               {isFileManagerTab ? (
                 <>
                   <div className="file-path-row">
@@ -2377,21 +2676,13 @@ function App() {
                   ) : null}
                 </>
               ) : isModsBrowserTab ? (
-                <div className="mods-browser-wrap">
-                  {isElectron ? (
-                    <webview
-                      ref={modsWebviewRef as React.RefObject<HTMLElement>}
-                      src="https://www.curseforge.com/minecraft-bedrock"
-                      className="mods-webview"
-                      allowpopups="false"
-                    />
-                  ) : (
-                    <div className="mods-fallback">
-                      <p>🖥 The Mods Browser requires the desktop app (Electron).</p>
-                      <p>Open the launcher via <strong>Launch Bedrock Panel.cmd</strong> to browse mods.</p>
-                      <p>Files you download will appear in the <strong>📥 Downloads</strong> tab.</p>
-                    </div>
-                  )}
+                <div className="mods-webview-stage">
+                  <iframe
+                    ref={modsWebviewRef}
+                    src="https://www.curseforge.com/minecraft-bedrock"
+                    className="mods-webview"
+                    title="Mods Browser"
+                  />
                 </div>
               ) : isDownloadsTab ? (
                 downloadsLoading ? (
@@ -2399,48 +2690,78 @@ function App() {
                 ) : downloadEntries.length === 0 ? (
                   <p className="packs-empty">No .mcpack or .mcaddon files found. Browse mods in the Mods Browser tab and click Download.</p>
                 ) : (
-                  <div className="pack-grid downloads-grid">
-                    {downloadEntries.map((entry) => {
-                      const busy = downloadsBusy.has(entry.filename);
-                      return (
-                        <div key={entry.filename} className="pack-tile download-tile">
-                          <button
-                            className="pack-tile-delete"
-                            type="button"
-                            disabled={busy}
-                            aria-label={`Delete ${entry.filename}`}
-                            onClick={() => void handleDeleteDownload(entry)}
-                          >
-                            🗑
-                          </button>
-                          <img
-                            className="pack-tile-icon"
-                            src={downloadIconUrl(entry.filename)}
-                            alt=""
-                            onError={(e) => {
-                              (e.currentTarget as HTMLImageElement).src =
-                                'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect width="1" height="1" fill="%230d1a28"/></svg>';
-                            }}
-                          />
-                          <div className="pack-tile-name download-tile-name" title={entry.filename}>
-                            {entry.filename}
-                          </div>
-                          <div className="pack-tile-meta">
-                            {(entry.sizeBytes / 1024).toFixed(0)} KB · {new Date(entry.modifiedAt).toLocaleDateString()}
-                          </div>
-                          <div className="pack-tile-footer">
-                            <button
-                              className="pack-toggle-btn install-btn"
-                              type="button"
-                              disabled={busy}
-                              onClick={() => void handleInstallDownload(entry)}
-                            >
-                              {busy ? 'Installing…' : '⚡ Install'}
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
+                  <div className="file-table-wrap">
+                    <table className="file-table downloads-table">
+                      <thead>
+                        <tr>
+                          <th>Name</th>
+                          <th>Type</th>
+                          <th>Size</th>
+                          <th>Modified</th>
+                          <th>Status</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {downloadEntries.map((entry) => {
+                          const busy = downloadsBusy.has(entry.filename);
+                          const installed = isDownloadFullyInstalled(entry, packsBehavior, packsResource);
+                          const installedPacks = getInstalledPacksForDownload(
+                            entry,
+                            packsBehavior,
+                            packsResource,
+                          );
+                          const knownPacks = entry.packs?.length ?? 0;
+                          const statusLabel = installed
+                            ? 'Installed'
+                            : installedPacks.length > 0
+                              ? 'Partially installed'
+                              : 'Not installed';
+
+                          return (
+                            <tr key={entry.filename}>
+                              <td title={entry.filename}>{getDownloadDisplayName(entry)}</td>
+                              <td>{entry.filename.toLowerCase().endsWith('.mcaddon') ? 'Addon' : 'Pack'}</td>
+                              <td>{`${Math.max(1, Math.round(entry.sizeBytes / 1024))} KB`}</td>
+                              <td>{new Date(entry.modifiedAt).toLocaleString()}</td>
+                              <td>
+                                <span className={`download-status ${installed ? 'ok' : installedPacks.length > 0 ? 'warn' : 'off'}`}>
+                                  {statusLabel}
+                                  {knownPacks > 0 ? ` (${installedPacks.length}/${knownPacks})` : ''}
+                                </span>
+                              </td>
+                              <td>
+                                <div className="file-actions">
+                                  <button
+                                    className={`file-action-btn${installed ? ' danger' : ''}`}
+                                    type="button"
+                                    disabled={busy}
+                                    onClick={() => void (installed ? handleUninstallDownload(entry) : handleInstallDownload(entry))}
+                                  >
+                                    {busy ? (installed ? 'Removing…' : 'Installing…') : installed ? 'Uninstall' : 'Install'}
+                                  </button>
+                                  <a
+                                    className="file-action-btn"
+                                    href={serverFileDownloadUrl(`downloads/${entry.filename}`)}
+                                    download
+                                  >
+                                    Download
+                                  </a>
+                                  <button
+                                    className="file-action-btn danger"
+                                    type="button"
+                                    disabled={busy}
+                                    onClick={() => void handleDeleteDownload(entry)}
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 )
               ) : isWorldsTab ? fileLoading ? (
@@ -2458,7 +2779,13 @@ function App() {
                         entry.name.toLowerCase() === normalizedActiveWorld;
 
                       return (
-                        <div key={entry.relativePath} className={`pack-tile world-tile${isActive ? ' active' : ''}`}>
+                        <div
+                          key={entry.relativePath}
+                          className={`pack-tile world-tile card-art-tile${isActive ? ' active' : ''}`}
+                          style={{
+                            backgroundImage: `linear-gradient(180deg, rgba(9, 12, 18, 0.12) 0%, rgba(9, 12, 18, 0.48) 58%, rgba(9, 12, 18, 0.78) 100%), url(${worldIconUrl(entry.relativePath)})`,
+                          }}
+                        >
                           <button
                             className="pack-tile-delete"
                             disabled={busy}
@@ -2498,7 +2825,13 @@ function App() {
                   {(filesTab === 'behavior-packs' ? packsBehavior : packsResource).map((pack) => {
                     const busy = packsBusy.has(pack.uuid);
                     return (
-                      <div key={pack.uuid} className={`pack-tile${pack.active ? ' active' : ''}`}>
+                      <div
+                        key={pack.uuid}
+                        className="pack-tile card-art-tile"
+                        style={{
+                          backgroundImage: `linear-gradient(180deg, rgba(9, 12, 18, 0.08) 0%, rgba(9, 12, 18, 0.42) 48%, rgba(9, 12, 18, 0.72) 100%), url(${packIconUrl(filesTab === 'behavior-packs' ? 'behavior' : 'resource', pack.uuid)})`,
+                        }}
+                      >
                         <button
                           className="pack-tile-delete"
                           type="button"
@@ -2508,17 +2841,7 @@ function App() {
                         >
                           🗑
                         </button>
-                        <img
-                          className="pack-tile-icon"
-                          src={packIconUrl(filesTab === 'behavior-packs' ? 'behavior' : 'resource', pack.uuid)}
-                          alt=""
-                          onError={(e) => {
-                            (e.currentTarget as HTMLImageElement).src =
-                              'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect width="1" height="1" fill="%23111c2a"/></svg>';
-                          }}
-                        />
-                        <div className="pack-tile-name" title={pack.name}>{pack.name}</div>
-                        <div className="pack-tile-meta">{pack.version}</div>
+                        <div className={`pack-tile-name${getTileTitleClass(pack.name)}`} title={pack.name}>{pack.name}</div>
                         <div className="pack-tile-footer">
                           <button
                             className={`pack-toggle-btn${pack.active ? ' active' : ''}`}
@@ -2526,7 +2849,7 @@ function App() {
                             disabled={busy}
                             onClick={() => void handlePackToggle(pack)}
                           >
-                            {busy ? '…' : pack.active ? '✓ Enabled' : 'Enable'}
+                            {busy ? 'Working…' : pack.active ? 'Disable' : 'Enable'}
                           </button>
                         </div>
                       </div>
@@ -2535,12 +2858,11 @@ function App() {
                 </div>
               )}
 
-              <p className="packs-restart-note">
-                {!isFileManagerTab && !isWorldsTab && !isModsBrowserTab && !isDownloadsTab
-                  ? '⚠ Pack changes require a server restart to take effect.'
-                  : null}
-              </p>
             </div>
+
+            {!isFileManagerTab && !isWorldsTab && !isModsBrowserTab && !isDownloadsTab ? (
+              <p className="packs-restart-note">⚠ Pack changes require a server restart to take effect.</p>
+            ) : null}
           </section>
         ) : null}
 
@@ -2590,6 +2912,14 @@ function App() {
                   {dialogState.confirmLabel}
                 </button>
               </div>
+            </div>
+          </div>
+        ) : null}
+
+        {toastState ? (
+          <div className="app-toast-stack" aria-live="polite" aria-atomic="true">
+            <div className={`app-toast ${toastState.tone}`} role="status">
+              {toastState.message}
             </div>
           </div>
         ) : null}

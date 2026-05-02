@@ -3,7 +3,11 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { readdirSync, statSync } from 'node:fs';
 import AdmZip from 'adm-zip';
-import type { BedrockPack, PackType } from '@bedrock-panel/shared';
+import type {
+  BedrockPack,
+  DownloadPackPreview,
+  PackType,
+} from '@bedrock-panel/shared';
 
 let serverDir = '';
 
@@ -37,6 +41,111 @@ interface PackManifest {
     description?: string;
     version: [number, number, number];
   };
+}
+
+function detectPackTypeFromManifest(raw: string): PackType {
+  try {
+    const fullManifest = JSON.parse(raw) as { modules?: Array<{ type?: string }> };
+    const moduleTypes = (fullManifest.modules ?? []).map((module) =>
+      (module.type ?? '').toLowerCase(),
+    );
+    if (moduleTypes.some((type) => ['resources', 'skin_pack', 'persona_piece'].includes(type))) {
+      return 'resource';
+    }
+  } catch {
+    // Default to behavior when module typing cannot be read.
+  }
+
+  return 'behavior';
+}
+
+function inspectSinglePack(zip: AdmZip): DownloadPackPreview | null {
+  let manifestEntry = zip.getEntry('manifest.json');
+
+  if (!manifestEntry) {
+    const nestedManifest = zip.getEntries().find((entry) => entry.entryName.endsWith('manifest.json'));
+    if (nestedManifest) {
+      manifestEntry = nestedManifest;
+    }
+  }
+
+  if (!manifestEntry) {
+    return null;
+  }
+
+  let manifestRaw = '';
+  let manifest: PackManifest;
+  try {
+    manifestRaw = manifestEntry.getData().toString('utf-8');
+    manifest = JSON.parse(manifestRaw) as PackManifest;
+  } catch {
+    return null;
+  }
+
+  return {
+    uuid: manifest.header.uuid,
+    type: detectPackTypeFromManifest(manifestRaw),
+    name: manifest.header.name || manifest.header.uuid,
+  };
+}
+
+export async function inspectPackBuffer(
+  buffer: Buffer,
+  originalName: string,
+): Promise<DownloadPackPreview[]> {
+  const ext = originalName.toLowerCase().endsWith('.mcaddon') ? 'mcaddon' : 'mcpack';
+  const zip = new AdmZip(buffer);
+  const previews: DownloadPackPreview[] = [];
+
+  if (ext === 'mcpack') {
+    const preview = inspectSinglePack(zip);
+    if (preview) previews.push(preview);
+    return previews;
+  }
+
+  const entries = zip.getEntries();
+  const innerPacks = entries.filter(
+    (entry) => !entry.isDirectory && entry.entryName.toLowerCase().endsWith('.mcpack'),
+  );
+
+  if (innerPacks.length === 0) {
+    const manifestEntries = entries.filter(
+      (entry) => !entry.isDirectory && entry.entryName.toLowerCase().endsWith('manifest.json'),
+    );
+
+    if (manifestEntries.length <= 1) {
+      const preview = inspectSinglePack(zip);
+      if (preview) previews.push(preview);
+      return previews;
+    }
+
+    const handledPrefixes = new Set<string>();
+    for (const manifestEntry of manifestEntries) {
+      const prefix = manifestEntry.entryName.replace(/manifest\.json$/i, '');
+      if (handledPrefixes.has(prefix)) continue;
+      handledPrefixes.add(prefix);
+
+      const subZip = new AdmZip();
+      for (const entry of entries) {
+        if (entry.isDirectory || !entry.entryName.startsWith(prefix)) continue;
+        const relPath = entry.entryName.slice(prefix.length);
+        if (!relPath) continue;
+        subZip.addFile(relPath, entry.getData());
+      }
+
+      const preview = inspectSinglePack(subZip);
+      if (preview) previews.push(preview);
+    }
+
+    return previews;
+  }
+
+  for (const innerEntry of innerPacks) {
+    const preview = inspectSinglePack(new AdmZip(innerEntry.getData()));
+    if (preview) previews.push(preview);
+  }
+
+  return previews;
 }
 
 async function readManifest(packDir: string): Promise<PackManifest | null> {
@@ -328,33 +437,18 @@ async function extractSinglePack(
   if (!manifestEntry) return null;
 
   let manifest: PackManifest;
+  let manifestRaw = '';
   try {
-    manifest = JSON.parse(manifestEntry.getData().toString('utf-8')) as PackManifest;
+    manifestRaw = manifestEntry.getData().toString('utf-8');
+    manifest = JSON.parse(manifestRaw) as PackManifest;
   } catch {
     return null;
   }
 
   const { uuid, name, description, version } = manifest.header;
 
-  // Determine type from modules
-  type ModuleType = { type: string; [key: string]: unknown };
-  const rawZip = zip as unknown as { toJSON?: () => unknown };
-  void rawZip;
   const allEntries = zip.getEntries();
-  let packType: PackType = 'behavior';
-  try {
-    const fullManifest = JSON.parse(manifestEntry.getData().toString('utf-8')) as {
-      modules?: ModuleType[];
-    };
-    const moduleTypes = (fullManifest.modules ?? []).map((m: ModuleType) =>
-      (m.type as string).toLowerCase()
-    );
-    if (moduleTypes.some((t: string) => ['resources', 'skin_pack', 'persona_piece'].includes(t))) {
-      packType = 'resource';
-    }
-  } catch {
-    // default to behavior
-  }
+  const packType = detectPackTypeFromManifest(manifestRaw);
 
   const dirName = packType === 'behavior' ? 'behavior_packs' : 'resource_packs';
   const packsDir = join(serverDir, dirName);

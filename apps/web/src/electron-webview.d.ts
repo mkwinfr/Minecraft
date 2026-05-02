@@ -10,6 +10,8 @@ declare module 'react/jsx-runtime' {
       webview: React.HTMLAttributes<HTMLElement> & {
         ref?: React.Ref<HTMLElement>;
         src?: string;
+        width?: string;
+        height?: string;
         allowpopups?: string;
         partition?: string;
         disablewebsecurity?: string;

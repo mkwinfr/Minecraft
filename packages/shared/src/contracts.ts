@@ -251,6 +251,13 @@ export interface DownloadEntry {
   filename: string;
   sizeBytes: number;
   modifiedAt: string;
+  packs?: DownloadPackPreview[];
+}
+
+export interface DownloadPackPreview {
+  uuid: string;
+  type: PackType;
+  name: string;
 }
 
 export interface DownloadsListResponse {

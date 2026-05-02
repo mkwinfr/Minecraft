@@ -263,7 +263,22 @@ export async function deleteServerPath(relativePath: string): Promise<void> {
 export async function writeUploadedFile(relativeDirectoryPath: string, originalName: string, buffer: Buffer): Promise<void> {
   const fileName = validatePathName(originalName, 'File name');
 
-  const { absolutePath } = resolveInsideRoot(relativeDirectoryPath);
+  const { absolutePath, normalizedRelativePath } = resolveInsideRoot(relativeDirectoryPath);
+
+  // .mcworld files are ZIP archives that must be extracted into a subfolder under worlds/
+  if (fileName.toLowerCase().endsWith('.mcworld') && normalizedRelativePath === 'worlds') {
+    const worldFolderName = fileName.slice(0, -'.mcworld'.length);
+    const extractTarget = join(absolutePath, worldFolderName);
+    try {
+      await mkdir(extractTarget, { recursive: true });
+      const zip = new AdmZip(buffer);
+      zip.extractAllTo(extractTarget, true);
+    } catch (error) {
+      throw toFriendlyFsError(error, 'Failed to extract .mcworld file.');
+    }
+    return;
+  }
+
   const targetPath = join(absolutePath, fileName);
   try {
     await writeFile(targetPath, buffer);
@@ -351,5 +366,41 @@ export async function getDownloadIconBuffer(filename: string): Promise<Buffer | 
       if (entry && !entry.isDirectory) return entry.getData();
     }
   } catch { /* no icon */ }
+  return null;
+}
+
+export async function getWorldIconBuffer(
+  relativeWorldPath: string,
+): Promise<{ buffer: Buffer; contentType: string } | null> {
+  try {
+    const { absolutePath, normalizedRelativePath } = resolveInsideRoot(relativeWorldPath);
+    const lower = normalizedRelativePath.toLowerCase();
+    if (!lower.startsWith('worlds/') || normalizedRelativePath.split('/').length < 2) {
+      return null;
+    }
+
+    const s = await stat(absolutePath);
+    if (!s.isDirectory()) {
+      return null;
+    }
+
+    const candidates: Array<{ name: string; contentType: string }> = [
+      { name: 'world_icon.jpeg', contentType: 'image/jpeg' },
+      { name: 'world_icon.jpg', contentType: 'image/jpeg' },
+      { name: 'world_icon.png', contentType: 'image/png' },
+    ];
+
+    for (const candidate of candidates) {
+      try {
+        const buffer = await readFile(join(absolutePath, candidate.name));
+        return { buffer, contentType: candidate.contentType };
+      } catch {
+        // Try next candidate.
+      }
+    }
+  } catch {
+    return null;
+  }
+
   return null;
 }

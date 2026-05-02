@@ -27,3 +27,31 @@ body {
 p {
   margin: 0;
 }
+
+/* ── Custom scrollbar (Webkit/Blink — Electron) ─────────────────────────── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(20, 22, 28, 0.7);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3a3d46;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #52566a;
+  border-color: transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}

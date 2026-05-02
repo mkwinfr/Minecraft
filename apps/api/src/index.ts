@@ -49,6 +49,7 @@ import {
   setPackActive,
   deletePack,
   installPackBuffer,
+  inspectPackBuffer,
   getPackIconPath,
 } from './services/packs-service';
 import {
@@ -57,6 +58,7 @@ import {
   deleteDownloadFile,
   deleteServerPath,
   getDownloadIconBuffer,
+  getWorldIconBuffer,
   getServerFileDownloadPath,
   getServerFolderZipBuffer,
   listDownloads,
@@ -69,7 +71,15 @@ import {
 } from './services/files-service';
 import multer from 'multer';
 
-const config = loadConfig();
+let config: import('./config').AppConfig;
+try {
+  config = loadConfig();
+} catch (error) {
+  const msg = error instanceof Error ? error.message : 'Failed to load configuration';
+  console.error(`❌ Configuration error: ${msg}`);
+  process.exit(1);
+}
+
 const app = express();
 
 configureProcessManager({
@@ -475,8 +485,19 @@ app.get('/api/server/files/download-zip', (req, res) => {
 
 app.get('/api/server/downloads', (_req, res) => {
   listDownloads()
-    .then((entries) => {
-      const payload: DownloadsListResponse = { entries };
+    .then(async (entries) => {
+      const enrichedEntries = await Promise.all(
+        entries.map(async (entry) => {
+          try {
+            const { buffer, filename } = await readDownloadBuffer(entry.filename);
+            const packs = await inspectPackBuffer(buffer, filename);
+            return { ...entry, packs };
+          } catch {
+            return { ...entry, packs: [] };
+          }
+        }),
+      );
+      const payload: DownloadsListResponse = { entries: enrichedEntries };
       res.json(payload);
     })
     .catch((err: unknown) => {
@@ -492,6 +513,27 @@ app.get('/api/server/downloads/icon/:filename', (req, res) => {
       if (!buf) { res.status(404).end(); return; }
       res.setHeader('Content-Type', 'image/png');
       res.send(buf);
+    })
+    .catch(() => res.status(404).end());
+});
+
+app.get('/api/server/worlds/icon', (req, res) => {
+  const path = typeof req.query.path === 'string' ? req.query.path : '';
+  if (!path.trim()) {
+    res.status(400).json({ error: 'Missing world path query parameter.' });
+    return;
+  }
+
+  getWorldIconBuffer(path)
+    .then((icon) => {
+      if (!icon) {
+        res.status(404).end();
+        return;
+      }
+
+      res.setHeader('Content-Type', icon.contentType);
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.send(icon.buffer);
     })
     .catch(() => res.status(404).end());
 });
@@ -651,8 +693,35 @@ process.on('SIGTERM', () => {
   });
 });
 
-app.listen(config.API_PORT, config.API_HOST, () => {
+process.on('uncaughtException', (error) => {
+  const msg = error instanceof Error ? error.message : 'Unknown error';
+  console.error(`❌ Uncaught exception: ${msg}`);
+  if (error instanceof Error) {
+    console.error(error.stack);
+  }
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  const msg = reason instanceof Error ? reason.message : String(reason);
+  console.error(`❌ Unhandled rejection: ${msg}`);
+  if (reason instanceof Error) {
+    console.error(reason.stack);
+  }
+  process.exit(1);
+});
+
+const server = app.listen(config.API_PORT, config.API_HOST, () => {
   console.log(
     `API listening on http://${config.API_HOST}:${config.API_PORT} (origin: ${config.WEB_ORIGIN})`,
   );
+});
+
+server.on('error', (error) => {
+  const msg = error instanceof Error ? error.message : 'Unknown error';
+  console.error(`❌ Server error: ${msg}`);
+  if (error instanceof Error) {
+    console.error(error.stack);
+  }
+  process.exit(1);
 });

@@ -181,6 +181,11 @@ export function packIconUrl(type: PackType, uuid: string): string {
   return `${API_BASE_URL}/api/server/packs/icon/${type}/${uuid}`;
 }
 
+export function worldIconUrl(path: string): string {
+  const query = new URLSearchParams({ path });
+  return `${API_BASE_URL}/api/server/worlds/icon?${query.toString()}`;
+}
+
 // Re-export BedrockPack so consumers can import from api.ts (kept for back-compat)
 // The canonical re-export is at the bottom of the file.
 

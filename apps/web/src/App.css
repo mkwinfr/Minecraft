@@ -1,11 +1,12 @@
 .launcher-shell {
-  min-height: 100vh;
+  height: 100vh;
   display: grid;
   grid-template-columns: 260px 1fr;
   background:
     linear-gradient(180deg, rgba(10, 12, 16, 0.56), rgba(10, 10, 12, 0.84)),
     url('/media/background.jpg') center / cover no-repeat;
   color: #f4f5f7;
+  overflow: hidden;
 }
 
 .launcher-sidebar {
@@ -13,6 +14,8 @@
   border-right: 1px solid #36363b;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .account-box {
@@ -48,6 +51,11 @@
   display: grid;
 }
 
+.left-links {
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .left-footer {
   margin-top: auto;
   border-top: 1px solid #33353b;
@@ -77,7 +85,14 @@
   display: grid;
   grid-template-rows: auto minmax(260px, 1fr) auto auto auto;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
+
+.launcher-shell {
+  min-height: 0;
+}
+
 
 .topbar {
   display: grid;
@@ -424,6 +439,113 @@ h1 {
   border: 1px solid rgba(255, 255, 255, 0.18);
 }
 
+.metrics-layout-control-deck {
+  background:
+    linear-gradient(180deg, rgba(14, 18, 23, 0.94), rgba(12, 14, 18, 0.92)),
+    repeating-linear-gradient(
+      90deg,
+      rgba(90, 135, 210, 0.08) 0,
+      rgba(90, 135, 210, 0.08) 1px,
+      transparent 1px,
+      transparent 34px
+    );
+}
+
+.metrics-layout-control-deck .resource-card {
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.14), 0 8px 18px rgba(0, 0, 0, 0.28);
+}
+
+.metrics-layout-control-deck .resource-ring {
+  animation: deck-ring-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes deck-ring-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.04);
+  }
+}
+
+.control-deck-lower {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem;
+  margin-top: 0.9rem;
+}
+
+.deck-panel {
+  border: 1px solid rgba(138, 175, 216, 0.25);
+  background: linear-gradient(180deg, rgba(24, 31, 42, 0.8), rgba(16, 21, 30, 0.72));
+  padding: 0.7rem;
+}
+
+.deck-panel h4 {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.74rem;
+  color: #b3d4f6;
+}
+
+.deck-panel p {
+  margin: 0.35rem 0 0;
+  font-size: 0.82rem;
+  color: #d8e8f8;
+}
+
+.deck-chip-row {
+  margin-top: 0.58rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+}
+
+.deck-chip-row button {
+  border: 1px solid rgba(138, 175, 216, 0.35);
+  background: rgba(45, 76, 112, 0.34);
+  color: #d7ebff;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+}
+
+.deck-chip-row button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.port-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.69rem;
+  letter-spacing: 0.03em;
+  font-weight: 700;
+  padding: 0.16rem 0.55rem;
+  text-transform: uppercase;
+}
+
+.port-pill.live {
+  color: #98f8c0;
+  border-color: rgba(94, 232, 151, 0.45);
+  background: rgba(35, 148, 87, 0.28);
+}
+
+.port-pill.standby {
+  color: #ffcb8f;
+  border-color: rgba(255, 189, 107, 0.45);
+  background: rgba(122, 79, 25, 0.34);
+}
+
 .console-wrap {
   padding: 0.9rem 1.05rem 1.15rem;
   background: rgba(19, 21, 26, 0.86);
@@ -442,7 +564,15 @@ h1 {
   border: 1px solid #343841;
   background: rgba(17, 19, 24, 0.86);
   padding: 1.1rem;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
+
+/* Mods Browser tab uses the normal .server-settings-wrap card chrome,
+   so we don't override margins/padding/border here. */
+
 
 .server-settings-wrap h3 {
   margin: 0 0 0.65rem;
@@ -493,15 +623,42 @@ h1 {
 /* Packs page: full-height scrollable grid area */
 .settings-panel.packs-panel {
   overflow-y: auto;
-  height: calc(100vh - 235px);
-  max-height: calc(100vh - 235px);
+  height: calc(100vh - 220px);
+  max-height: calc(100vh - 220px);
 }
 
-/* Mods Browser needs flex layout — override overflow so webview can fill */
-.settings-panel.packs-panel:has(.mods-browser-wrap) {
+/* Mods Browser needs flex layout so webview can fill panel height */
+.settings-panel.packs-panel.mods-browser-panel {
   overflow-y: hidden;
   display: flex;
   flex-direction: column;
+  padding: 0;
+}
+
+.settings-panel.packs-panel.mods-browser-full-panel {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  height: 100%;
+  max-height: none;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.mods-browser-standalone {
+  width: 100%;
+  height: calc(100vh - 220px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mods-webview-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
 }
 
 .settings-install-tools {
@@ -755,18 +912,6 @@ h1 {
   color: #b5dfff;
 }
 
-.header-notice.success {
-  border-color: rgba(80, 220, 130, 0.35);
-  background: rgba(80, 220, 130, 0.12);
-  color: #8dffb8;
-}
-
-.header-notice.error {
-  border-color: rgba(255, 80, 80, 0.35);
-  background: rgba(255, 80, 80, 0.12);
-  color: #ff9c9c;
-}
-
 .file-toolbar-actions {
   display: flex;
   align-items: center;
@@ -920,6 +1065,37 @@ h1 {
   align-content: start;
 }
 
+.pack-grid:not(.world-grid) .pack-tile {
+  aspect-ratio: 1 / 1;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.pack-grid:not(.world-grid) .pack-tile-name {
+  margin: 0 0.7rem 0.28rem;
+  padding: 0.48rem 0.62rem;
+  min-height: 0;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: rgba(10, 14, 20, 0.54);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+  z-index: 1;
+}
+
+.pack-grid:not(.world-grid) .pack-tile-footer {
+  margin-top: auto;
+  position: relative;
+  z-index: 1;
+  background: rgba(7, 11, 17, 0.48);
+  backdrop-filter: blur(10px);
+}
+
 /* Individual tile */
 .pack-tile {
   position: relative;
@@ -936,8 +1112,27 @@ h1 {
   background: rgba(255, 255, 255, 0.05);
 }
 
-.pack-tile.active {
-  border-color: rgba(58, 158, 114, 0.4);
+.card-art-tile {
+  background-color: #151b24;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04), 0 12px 30px rgba(0, 0, 0, 0.16);
+}
+
+.card-art-tile:hover {
+  background-color: #151b24;
+  background-size: cover;
+}
+
+.card-art-tile::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.12), transparent 42%),
+    linear-gradient(180deg, rgba(7, 10, 15, 0.02) 0%, rgba(7, 10, 15, 0.3) 60%, rgba(7, 10, 15, 0.58) 100%);
+  pointer-events: none;
 }
 
 /* Trashcan — top-left corner */
@@ -997,6 +1192,16 @@ h1 {
   word-break: break-word;
 }
 
+.pack-tile-name--compact {
+  font-size: 0.75rem;
+  letter-spacing: 0.01em;
+}
+
+.pack-tile-name--tiny {
+  font-size: 0.68rem;
+  letter-spacing: 0;
+}
+
 .pack-tile-meta {
   font-size: 0.7rem;
   color: #4d6a83;
@@ -1025,7 +1230,7 @@ h1 {
 
 .pack-toggle-btn {
   flex: 1;
-  padding: 0.25rem 0.6rem;
+  padding: 0.38rem 0.7rem;
   border-radius: 5px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.04);
@@ -1036,12 +1241,46 @@ h1 {
   text-transform: uppercase;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transform: translateY(0) scale(1);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.14);
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.12s ease, box-shadow 0.18s ease;
 }
 
 .pack-toggle-btn:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.08);
   color: #d0dde8;
+  box-shadow: 0 12px 22px rgba(0, 0, 0, 0.18);
+}
+
+.pack-toggle-btn:active:not(:disabled),
+.pack-tile-delete:active:not(:disabled) {
+  transform: translateY(1px) scale(0.97);
+}
+
+.pack-toggle-btn:active:not(:disabled) {
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.18);
+}
+
+.pack-toggle-btn.active {
+  border-color: rgba(87, 173, 118, 0.45);
+  background: linear-gradient(180deg, rgba(75, 154, 102, 0.35), rgba(54, 116, 74, 0.42));
+  color: #ddf5e4;
+}
+
+.pack-toggle-btn.active:hover:not(:disabled) {
+  background: linear-gradient(180deg, rgba(86, 170, 114, 0.42), rgba(59, 128, 82, 0.5));
+  color: #f1fff4;
+}
+
+.pack-toggle-btn.install-btn {
+  border-color: rgba(112, 142, 176, 0.3);
+  background: linear-gradient(180deg, rgba(79, 93, 112, 0.3), rgba(50, 61, 78, 0.36));
+  color: #d3dfeb;
+}
+
+.pack-toggle-btn.install-btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, rgba(91, 106, 127, 0.38), rgba(58, 70, 89, 0.44));
+  color: #eef5fb;
 }
 
 .pack-toggle-btn:disabled {
@@ -1050,7 +1289,7 @@ h1 {
 }
 
 .packs-restart-note {
-  margin: 0.6rem 0 0;
+  margin: 0.8rem 0 0;
   font-size: 0.76rem;
   color: #597d97;
 }
@@ -1061,26 +1300,22 @@ h1 {
 
 /* ── Mods Browser ──────────────────────────────────────────────────────────── */
 
-.mods-browser-wrap {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-  gap: 0;
-}
-
 .mods-webview {
-  flex: 1 1 0;
-  min-height: 340px;
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+  min-width: 0;
   width: 100%;
+  height: 100%;
   border: none;
-  border-radius: 6px 6px 0 0;
+  border-radius: 0;
   background: #0d1117;
   display: block;
 }
 
 .mods-fallback {
-  flex: 1 1 0;
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1092,7 +1327,6 @@ h1 {
   text-align: center;
   color: #8aa8bf;
   font-size: 0.88rem;
-  min-height: 200px;
 }
 
 .mods-downloads-strip {
@@ -1128,14 +1362,16 @@ h1 {
 
 .downloads-grid {
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 1rem;
+  padding: 0.2rem;
 }
 
 .download-tile {
-  min-height: 200px;
+  min-height: 214px;
 }
 
 .download-tile-name {
-  padding: 0 0.5rem;
+  padding: 0 0.65rem;
   font-size: 0.72rem;
   word-break: break-word;
   text-align: center;
@@ -1347,6 +1583,37 @@ h1 {
   cursor: not-allowed;
 }
 
+.download-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 0.67rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #c8d7e6;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.download-status.ok {
+  border-color: rgba(110, 232, 154, 0.38);
+  background: rgba(80, 220, 130, 0.13);
+  color: #b6ffd0;
+}
+
+.download-status.warn {
+  border-color: rgba(232, 184, 90, 0.36);
+  background: rgba(232, 184, 90, 0.12);
+  color: #ffd78d;
+}
+
+.download-status.off {
+  border-color: rgba(133, 158, 184, 0.26);
+  background: rgba(133, 158, 184, 0.08);
+  color: #b8c9da;
+}
+
 .file-editor {
   margin-top: 0.75rem;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -1465,6 +1732,72 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.status-row {
+  min-height: 72px;
+}
+
+.status-row > .status-value,
+.status-row > .status-value-pill {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  justify-self: end;
+  text-align: right;
+}
+
+.status-value {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #cfe0ee;
+  line-height: 1.3;
+}
+
+.status-value-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  padding: 0.18rem 0.64rem;
+  font-size: 0.69rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #d0dce8;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.status-value-pill.ok {
+  border-color: rgba(80, 220, 130, 0.4);
+  background: rgba(80, 220, 130, 0.12);
+  color: #8dffb8;
+}
+
+.status-value-pill.warn {
+  border-color: rgba(232, 184, 90, 0.36);
+  background: rgba(232, 184, 90, 0.12);
+  color: #ffd78d;
+}
+
+.status-empty {
+  margin: 0;
+  color: #a9b8c7;
+  font-size: 0.83rem;
+}
+
+.status-bottom-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
 }
 
 /* ── Each row: label+hint on left, control on right ── */
@@ -1688,7 +2021,7 @@ h1 {
   opacity: 0.64;
 }
 
-.app-dialog-backdrop {
+.app-dialog-overlay {
   position: fixed;
   inset: 0;
   background: rgba(3, 7, 12, 0.7);
@@ -1759,6 +2092,52 @@ h1 {
   cursor: not-allowed;
 }
 
+.app-toast-stack {
+  position: fixed;
+  right: 1.15rem;
+  bottom: 1.15rem;
+  z-index: 40;
+  pointer-events: none;
+}
+
+.app-toast {
+  min-width: min(360px, calc(100vw - 2.3rem));
+  max-width: min(420px, calc(100vw - 2.3rem));
+  padding: 0.8rem 0.95rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(12px);
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: #edf3f8;
+  animation: app-toast-in 160ms ease-out;
+}
+
+.app-toast.success {
+  border-color: rgba(80, 220, 130, 0.35);
+  background: linear-gradient(180deg, rgba(32, 67, 45, 0.9), rgba(21, 43, 30, 0.94));
+  color: #bff0ce;
+}
+
+.app-toast.error {
+  border-color: rgba(255, 80, 80, 0.34);
+  background: linear-gradient(180deg, rgba(82, 32, 36, 0.92), rgba(52, 18, 22, 0.96));
+  color: #ffc4c4;
+}
+
+@keyframes app-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (max-width: 1200px) {
   .launcher-shell {
     grid-template-columns: 1fr;
@@ -1781,6 +2160,10 @@ h1 {
 
   .resource-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .control-deck-lower {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -1819,6 +2202,11 @@ h1 {
     grid-template-columns: 1fr;
   }
 
+  .status-grid,
+  .status-bottom-grid {
+    grid-template-columns: 1fr;
+  }
+
   .general-status-grid {
     grid-template-columns: 1fr;
   }
@@ -1837,4 +2225,28 @@ h1 {
     justify-content: flex-start;
     margin-left: 0;
   }
+}
+
+/* Debug: show container boundaries on Server Files page */
+.launcher-main.debug-containers .server-settings-wrap {
+  outline: 2px solid rgba(255, 90, 90, 0.9);
+  outline-offset: -2px;
+}
+
+.launcher-main.debug-containers .server-settings-wrap section,
+.launcher-main.debug-containers .server-settings-wrap header,
+.launcher-main.debug-containers .server-settings-wrap main,
+.launcher-main.debug-containers .server-settings-wrap article,
+.launcher-main.debug-containers .server-settings-wrap aside,
+.launcher-main.debug-containers .server-settings-wrap div,
+.launcher-main.debug-containers .server-settings-wrap form,
+.launcher-main.debug-containers .server-settings-wrap table,
+.launcher-main.debug-containers .server-settings-wrap tbody,
+.launcher-main.debug-containers .server-settings-wrap tr,
+.launcher-main.debug-containers .server-settings-wrap td,
+.launcher-main.debug-containers .server-settings-wrap ul,
+.launcher-main.debug-containers .server-settings-wrap li,
+.launcher-main.debug-containers .server-settings-wrap webview {
+  outline: 1px dashed rgba(120, 210, 255, 0.8);
+  outline-offset: -1px;
 }

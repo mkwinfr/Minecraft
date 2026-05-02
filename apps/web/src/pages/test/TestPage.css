@@ -1,0 +1,144 @@
+.test-page-wrap {
+  margin: 1rem 1.05rem 1.15rem;
+  border: 1px solid #343841;
+  background: rgba(17, 19, 24, 0.86);
+  padding: 1.1rem;
+  outline: 2px solid rgba(255, 196, 77, 0.9);
+  position: relative;
+}
+
+.test-page-wrap::before {
+  content: 'WRAP';
+  position: absolute;
+  top: -0.95rem;
+  left: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #2a1b00;
+  background: rgba(255, 196, 77, 0.95);
+  border: 1px solid rgba(255, 196, 77, 0.95);
+  border-radius: 3px;
+  padding: 0.12rem 0.35rem;
+  z-index: 8;
+}
+
+.test-page-title {
+  margin: 0 0 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.92rem;
+  background: rgba(98, 173, 255, 0.2);
+  border: 1px solid rgba(98, 173, 255, 0.8);
+  padding: 0.35rem 0.45rem;
+  position: relative;
+}
+
+.test-page-title::before {
+  content: 'TITLE';
+  position: absolute;
+  top: -0.82rem;
+  right: 0.35rem;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #08203f;
+  background: rgba(98, 173, 255, 0.95);
+  border: 1px solid rgba(98, 173, 255, 0.95);
+  border-radius: 3px;
+  padding: 0.1rem 0.3rem;
+  z-index: 8;
+}
+
+.test-page-webview-stage {
+  position: relative;
+  width: 100%;
+  height: calc(100vh - 220px);
+  min-height: 0;
+  overflow: hidden;
+  background: rgba(117, 232, 173, 0.12);
+  border: 2px dashed rgba(117, 232, 173, 0.95);
+}
+
+.test-page-webview-stage::before {
+  content: 'STAGE';
+  position: absolute;
+  top: 0.35rem;
+  left: 0.35rem;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #0b2b1a;
+  background: rgba(117, 232, 173, 0.95);
+  border: 1px solid rgba(117, 232, 173, 0.95);
+  border-radius: 3px;
+  padding: 0.1rem 0.3rem;
+  z-index: 8;
+}
+
+.test-page-webview-label {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  max-width: calc(100% - 0.8rem);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #3b0f0f;
+  background: rgba(248, 124, 124, 0.95);
+  border: 1px solid rgba(248, 124, 124, 0.95);
+  border-radius: 3px;
+  padding: 0.1rem 0.3rem;
+  z-index: 9;
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.test-page-webview {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #0d1117;
+  display: block;
+  outline: 2px solid rgba(248, 124, 124, 0.95);
+  z-index: 1;
+}
+
+.test-page-fallback {
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 1rem;
+  color: #d6dce3;
+  display: grid;
+  gap: 0.45rem;
+  outline: 2px solid rgba(193, 139, 255, 0.95);
+  position: relative;
+}
+
+.test-page-fallback::before {
+  content: 'FALLBACK';
+  position: absolute;
+  top: -0.85rem;
+  left: 0.45rem;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #250e3f;
+  background: rgba(193, 139, 255, 0.95);
+  border: 1px solid rgba(193, 139, 255, 0.95);
+  border-radius: 3px;
+  padding: 0.1rem 0.3rem;
+  z-index: 8;
+}
+
+.test-page-fallback a {
+  color: #8fd5ff;
+}

@@ -11,6 +11,7 @@ const DEFAULT_API_PORT = Number(process.env.BEDROCK_PANEL_API_PORT || '3001');
 const IS_DEV = process.env.NODE_ENV === 'development' || !!process.env.BEDROCK_PANEL_UI_URL;
 
 let apiProcess = null;
+let apiLastOutput = '';
 let mainWindow = null;
 let tray = null;
 let apiPort = DEFAULT_API_PORT;
@@ -129,14 +130,26 @@ function startApiProcess() {
       WEB_ORIGIN: getApiUrl(),
       BEDROCK_SERVER_DIR: process.env.BEDROCK_SERVER_DIR || getManagedServerDir(),
     },
-    stdio: 'inherit',
+    stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
+
+  apiLastOutput = '';
+
+  const collectOutput = (data) => {
+    apiLastOutput = (apiLastOutput + data.toString()).split('\n').slice(-40).join('\n');
+  };
+
+  apiProcess.stdout.on('data', collectOutput);
+  apiProcess.stderr.on('data', collectOutput);
 
   apiProcess.once('exit', (code, signal) => {
     apiProcess = null;
     if (!app.isQuitting) {
-      const details = `The local Bedrock service exited unexpectedly (code=${code ?? 'null'}, signal=${signal ?? 'null'}).`;
+      const outputSection = apiLastOutput.trim()
+        ? `\n\nLast output:\n${apiLastOutput.trim()}`
+        : '';
+      const details = `The local Bedrock service exited unexpectedly (code=${code ?? 'null'}, signal=${signal ?? 'null'}).${outputSection}`;
       void dialog.showErrorBox('Bedrock Panel service stopped', details);
       app.quit();
     }
@@ -222,6 +235,8 @@ function createWindow() {
     mainWindow = null;
   });
 
+  mainWindow.maximize();
+
   void mainWindow.loadURL(IS_DEV ? DEV_URL : getApiUrl());
 }
 
@@ -251,6 +266,18 @@ app.whenReady().then(async () => {
 
   createTray();
   createWindow();
+
+  // Keep embedded webview content at stable scale.
+  app.on('web-contents-created', (_event, contents) => {
+    if (contents.getType() !== 'webview') {
+      return;
+    }
+
+    contents.setZoomFactor(1);
+    void contents.setVisualZoomLevelLimits(1, 1).catch(() => {
+      // Ignore if zoom lock is unavailable for the guest page.
+    });
+  });
 
   // ── Webview: strip framing-block headers from CurseForge ──────────────
   session.defaultSession.webRequest.onHeadersReceived(
